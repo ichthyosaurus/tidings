@@ -19,8 +19,11 @@ class NewsBlendModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_ENUMS(SortMode)
+    Q_ENUMS(FilterMode)
     Q_PROPERTY(SortMode sortMode READ sortMode WRITE setSortMode
                NOTIFY sortModeChanged)
+    Q_PROPERTY(FilterMode filterMode READ filterMode WRITE setFilterMode
+               NOTIFY filterModeChanged)
     Q_PROPERTY(QString selectedFeed READ selectedFeed WRITE setSelectedFeed
                NOTIFY selectedFeedChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
@@ -73,14 +76,20 @@ public:
         IsReadRole
     };
 
+    enum FilterMode
+    {
+        AllFeeds,
+        SingleFeed,
+        UnreadAllFeeds,
+        UnreadSingleFeed
+    };
+
     enum SortMode
     {
         LatestFirst,
         OldestFirst,
         FeedLatestFirst,
-        FeedOldestFirst,
-        FeedOnlyLatestFirst,
-        FeedOnlyOldestFirst
+        FeedOldestFirst
     };
 
     explicit NewsBlendModel(QObject* parent = 0);
@@ -125,6 +134,7 @@ public:
 
 signals:
     void sortModeChanged();
+    void filterModeChanged();
     void selectedFeedChanged();
     void countChanged();
     void shelvedChanged(int index);
@@ -135,6 +145,9 @@ private:
 
     SortMode sortMode() const { return mySortMode; }
     void setSortMode(SortMode mode);
+
+    FilterMode filterMode() const { return myFilterMode; }
+    void setFilterMode(FilterMode mode);
 
     QString selectedFeed() const { return mySelectedFeed; }
     void setSelectedFeed(const QString& selectedFeed);
@@ -162,6 +175,7 @@ private:
     QMap<QString, QString> myFeedLogos;
 
     SortMode mySortMode;
+    FilterMode myFilterMode;
     QString mySelectedFeed;
 };
 

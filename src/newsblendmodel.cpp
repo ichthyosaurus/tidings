@@ -10,8 +10,27 @@ namespace
 int compare(NewsBlendModel::Item::ConstPtr a,
             NewsBlendModel::Item::ConstPtr b,
             NewsBlendModel::SortMode sortMode,
+            NewsBlendModel::FilterMode filterMode,
             const QString& selectedFeedSource)
 {
+    switch(filterMode)
+    {
+    case NewsBlendModel::AllFeeds:
+        break;
+    case NewsBlendModel::SingleFeed:
+        if (a->feedSource != selectedFeedSource) return -1;
+        else if (b->feedSource != selectedFeedSource) return 1;
+        break;
+    case NewsBlendModel::UnreadAllFeeds:
+        if (a->isRead) return -1;
+        else if (b->isRead) return 1;
+        break;
+    case NewsBlendModel::UnreadSingleFeed:
+        if (a->isRead || a->feedSource != selectedFeedSource) return -1;
+        else if (b->isRead || b->feedSource != selectedFeedSource) return 1;
+        break;
+    }
+
     switch (sortMode)
     {
     case NewsBlendModel::LatestFirst:
@@ -46,41 +65,10 @@ int compare(NewsBlendModel::Item::ConstPtr a,
             return (a->feedSource < b->feedSource) ? 1
                                                    : -1;
         }
-    case NewsBlendModel::FeedOnlyLatestFirst:
-        if (a->feedSource != selectedFeedSource)
-        {
-            return -1;
-        }
-        else if (b->feedSource != selectedFeedSource)
-        {
-            return 1;
-        }
-        else
-        {
-            return (a->date < b->date) ? -1
-                                       : (a->date == b->date) ? 0
-                                                              : 1;
-        }
-
-    case NewsBlendModel::FeedOnlyOldestFirst:
-        if (a->feedSource != selectedFeedSource)
-        {
-            return -1;
-        }
-        else if (b->feedSource != selectedFeedSource)
-        {
-            return 1;
-        }
-        else
-        {
-            return (a->date < b->date) ? 1
-                                       : (a->date == b->date) ? 0
-                                                              : -1;
-        }
-
-    default:
-        return 0;
     }
+
+    // fallback in case an enum is changed without updating comparisons (= bug)
+    return 0;
 }
 
 }
@@ -88,6 +76,7 @@ int compare(NewsBlendModel::Item::ConstPtr a,
 NewsBlendModel::NewsBlendModel(QObject* parent)
     : QAbstractListModel(parent)
     , mySortMode(LatestFirst)
+    , myFilterMode(AllFeeds)
 {
     myRolenames[FeedSourceRole] = "source";
 
@@ -135,14 +124,25 @@ void NewsBlendModel::setSortMode(SortMode mode)
     }
 }
 
+void NewsBlendModel::setFilterMode(FilterMode mode)
+{
+    if (mode != myFilterMode)
+    {
+        qDebug() << Q_FUNC_INFO << mode;
+        myFilterMode = mode;
+        reinsertItems();
+        emit filterModeChanged();
+        emit countChanged();
+    }
+}
+
 void NewsBlendModel::setSelectedFeed(const QString& selectedFeed)
 {
     if (selectedFeed != mySelectedFeed)
     {
         mySelectedFeed = selectedFeed;
         emit selectedFeedChanged();
-        if (mySortMode == FeedOnlyLatestFirst ||
-            mySortMode == FeedOnlyOldestFirst)
+        if (myFilterMode == SingleFeed || myFilterMode == UnreadSingleFeed)
         {
             reinsertItems();
             emit countChanged();
@@ -152,10 +152,17 @@ void NewsBlendModel::setSelectedFeed(const QString& selectedFeed)
 
 int NewsBlendModel::rowCount(const QModelIndex&) const
 {
-    if (mySortMode == FeedOnlyLatestFirst ||
-            mySortMode == FeedOnlyOldestFirst)
+    if (myFilterMode == SingleFeed)
     {
         return myTotalCounts.value(mySelectedFeed, 0);
+    }
+    else if (myFilterMode == UnreadSingleFeed)
+    {
+        return myUnreadCounts.value(mySelectedFeed, 0);
+    }
+    else if (myFilterMode == UnreadAllFeeds)
+    {
+        return myItems.size(); // TODO is this correct?
     }
     else
     {
@@ -214,9 +221,13 @@ int NewsBlendModel::insertItem(const Item::Ptr item, bool update)
 {   
     int insertPos = -1;
 
-    if ((mySortMode == FeedOnlyLatestFirst ||
-         mySortMode == FeedOnlyOldestFirst) &&
-        item->feedSource != mySelectedFeed)
+    if (myFilterMode == SingleFeed && item->feedSource != mySelectedFeed)
+    {
+        return insertPos;
+    }
+    else if ((myFilterMode == UnreadAllFeeds ||
+              myFilterMode == UnreadSingleFeed) &&
+             item->isRead == true)
     {
         return insertPos;
     }
@@ -229,7 +240,7 @@ int NewsBlendModel::insertItem(const Item::Ptr item, bool update)
         {
             if (begin == end)
             {
-                if (compare(item, myItems.at(begin), mySortMode, mySelectedFeed) == -1)
+                if (compare(item, myItems.at(begin), mySortMode, myFilterMode, mySelectedFeed) == -1)
                 {
                     if (update)
                     {
@@ -264,7 +275,7 @@ int NewsBlendModel::insertItem(const Item::Ptr item, bool update)
                 int middle = begin / 2 + end / 2;
                 //qDebug() << "begin" << begin << "middle" << middle << "end" << end
                 //         << "sortMode" << mySortMode;
-                if (compare(item, myItems.at(middle), mySortMode, mySelectedFeed) == -1)
+                if (compare(item, myItems.at(middle), mySortMode, myFilterMode, mySelectedFeed) == -1)
                 {
                     begin = middle + 1;
                 }
